@@ -1,0 +1,25 @@
+[window]
+dimensions = { columns = 120, lines = 30 }
+padding = { x = 0, y = 0 }
+decorations = "Full"
+opacity = 0.75
+blur = true
+startup_mode = "Windowed"
+
+
+[font]
+size = 14
+normal = { family = "Liga SFMono Nerd Font", style = "Regular" }
+bold = { family = "Liga SFMono Nerd Font", style = "Bold" }
+italic = { family = "Liga SFMono Nerd Font", style = "Italic" }
+bold_italic = { family = "Liga SFMono Nerd Font", style = "Bold Italic" }
+
+
+[colors.primary]
+background = "#000000"
+
+[mouse]
+hide_when_typing = true
+bindings = [
+{ mouse = "Right", action = "Copy" },
+]
