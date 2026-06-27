@@ -1,10 +1,8 @@
 [window]
-dimensions = { columns = 120, lines = 30 }
-padding = { x = 0, y = 0 }
-decorations = "Full"
+startup_mode = "Maximized"
+decorations = "Buttonless"
 opacity = 0.75
 blur = true
-startup_mode = "Windowed"
 
 
 [font]
@@ -22,7 +20,7 @@ foreground = "#cdd6f4"
 [mouse]
 hide_when_typing = true
 bindings = [
-{ mouse = "Right", action = "Copy" },
+    { mouse = "Right", action = "Copy" },
 ]
 
 [terminal]

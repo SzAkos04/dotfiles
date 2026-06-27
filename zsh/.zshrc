@@ -369,6 +369,14 @@ fi
 
 
 # ============================================================
+# FASTFETCH — System Information (Runs on startup)
+# ============================================================
+if command -v fastfetch &>/dev/null; then
+  fastfetch
+  echo ""
+fi
+
+# ============================================================
 # TMUX — auto-attach or create session named 'main'
 # (kept last so everything above is available inside tmux)
 # ============================================================
