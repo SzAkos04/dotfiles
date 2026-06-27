@@ -17,9 +17,13 @@ bold_italic = { family = "Liga SFMono Nerd Font", style = "Bold Italic" }
 
 [colors.primary]
 background = "#000000"
+foreground = "#cdd6f4"
 
 [mouse]
 hide_when_typing = true
 bindings = [
 { mouse = "Right", action = "Copy" },
 ]
+
+[terminal]
+shell = { program = "/bin/zsh", args = ["-l"] }

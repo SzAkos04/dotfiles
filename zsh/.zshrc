@@ -1,4 +1,10 @@
 # ============================================================
+# BOOTSTRAP: Homebrew (must be first — everything else depends on it)
+# ============================================================
+eval "$(/opt/homebrew/bin/brew shellenv)"
+
+
+# ============================================================
 # BOOTSTRAP: Install zinit (plugin manager) if not present
 # ============================================================
 ZINIT_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}/zinit/zinit.git"
@@ -12,9 +18,6 @@ source "${ZINIT_HOME}/zinit.zsh"
 # ============================================================
 # PLUGINS (loaded via zinit — fast, lazy where possible)
 # ============================================================
-
-# Syntax highlighting (must come before autosuggestions)
-zinit light zsh-users/zsh-syntax-highlighting
 
 # Fish-like autosuggestions (grey ghost text as you type)
 zinit light zsh-users/zsh-autosuggestions
@@ -36,9 +39,12 @@ zinit snippet OMZP::colored-man-pages
 
 zinit light MichaelAquilina/zsh-auto-notify
 
+# Syntax highlighting (must come LAST — needs to wrap all widgets)
+zinit light zsh-users/zsh-syntax-highlighting
+
 
 # zsh-auto-notify config
-AUTO_NOTIFY_THRESHOLD=10   # seconds before notifying
+AUTO_NOTIFY_THRESHOLD=10
 AUTO_NOTIFY_TITLE="Terminal"
 AUTO_NOTIFY_BODY="[%exit_code] %command (%elapsed)"
 AUTO_NOTIFY_EXPIRE_TIME=5000
@@ -68,9 +74,8 @@ HISTFILE=~/.zsh_history
 setopt HIST_IGNORE_ALL_DUPS   # No duplicate entries
 setopt HIST_IGNORE_SPACE      # Lines starting with space are not saved
 setopt HIST_VERIFY            # Show expanded history before running it
-setopt SHARE_HISTORY          # Share history between sessions instantly
+setopt SHARE_HISTORY          # Share history across sessions (implies INC_APPEND)
 setopt EXTENDED_HISTORY       # Save timestamp + duration
-setopt INC_APPEND_HISTORY     # Write to history file immediately
 
 
 # ============================================================
@@ -78,6 +83,7 @@ setopt INC_APPEND_HISTORY     # Write to history file immediately
 # ============================================================
 autoload -Uz compinit
 compinit
+zinit cdreplay -q   # replay compdef calls cached during plugin load
 
 # Case-insensitive, partial-word, substring completion
 zstyle ':completion:*' matcher-list \
@@ -155,7 +161,6 @@ setopt AUTO_PUSHD           # cd pushes to stack automatically
 setopt PUSHD_IGNORE_DUPS    # No duplicate dirs on stack
 setopt PUSHD_SILENT         # Don't print the dir stack
 setopt CORRECT              # Suggest corrections for typos
-setopt CORRECT_ALL          # Suggest corrections for all args
 setopt CDABLE_VARS          # cd to a var that holds a path
 setopt GLOB_DOTS            # Include dotfiles in globbing
 setopt EXTENDED_GLOB        # Extended glob patterns (**, *(.), etc.)
@@ -170,10 +175,10 @@ setopt INTERACTIVE_COMMENTS # Allow # comments in interactive shell
 export EDITOR=nvim
 export VISUAL=nvim
 export PAGER=less
-export LESS='-R --use-color -Dd+r$Du+b'   # Colored less output
-export MANPAGER="sh -c 'col -bx | bat -l man -p'"  # bat for man pages
+export LESS='-R --use-color -Dd+r$Du+b'
+export MANPAGER="sh -c 'col -bx | bat -l man -p'"
 
-export PATH=$HOME/Documents/cinit/build:$HOME/.local/bin:$PATH
+export PATH="$HOME/.cargo/bin:$HOME/Documents/cinit/build:$HOME/.local/bin:$PATH"
 
 # fzf — fuzzy finder defaults
 export FZF_DEFAULT_OPTS='
@@ -190,27 +195,25 @@ export FZF_DEFAULT_COMMAND='fd --type f --hidden --follow --exclude .git'
 export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND"
 export FZF_ALT_C_COMMAND='fd --type d --hidden --follow --exclude .git'
 
-# Load fzf keybindings and completion if available
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
 
 
 # ============================================================
 # ALIASES — Core
 # ============================================================
-alias cat="bat"                                       # Better cat
+alias cat="bat"
 
-# Upgraded to eza for rich visual context and Git awareness
 if command -v eza &>/dev/null; then
-  alias ls="eza --icons=always --group-directories-first"
-  alias ll="eza -lAph --icons=always --git --group-directories-first"
-  alias lt="eza -lAph --sort=time --icons=always --group-directories-first"
-  alias lS="eza -lApSh --icons=always --group-directories-first"
-  alias tree="eza --tree --icons=always"
+  alias ls="eza -A --icons=always --group-directories-first"
+  alias ll="eza -lAaph --icons=always --git --group-directories-first"
+  alias lt="eza -lAaph --sort=time --icons=always --group-directories-first"
+  alias lS="eza -lAaph --sort=size --icons=always --group-directories-first"
+  alias tree="eza --tree -A --icons=always"
 else
-  alias ls="gls -Ap --group-directories-first --color=auto"
-  alias ll="gls -lAph --group-directories-first --color=auto"
-  alias lt="gls -lAph --sort=time --color=auto"
-  alias lS="gls -lApSh --color=auto"
+  alias ls="gls -Apx --group-directories-first --color=auto"
+  alias ll="gls -lAaph --group-directories-first --color=auto"
+  alias lt="gls -lAaph --sort=time --color=auto"
+  alias lS="gls -lAaph --sort=size --color=auto"
 fi
 
 alias ..="cd .."
@@ -222,11 +225,11 @@ alias diff="diff --color=auto"
 alias ip="ip --color=auto"
 alias du="du -h"
 alias df="df -h"
-alias free="vm_stat"  # macOS memory statistics page replacement
+alias free="vm_stat"
 alias mkdir="mkdir -pv"
 
-alias so="exec zsh"                                  # Reload shell
-alias reload="source ~/.zshrc"
+alias so="exec zsh"       # Reload shell (clean — replaces process)
+alias reload="source ~/.zshrc"  # Reload in-place (keeps current state)
 alias zshrc="${EDITOR} ~/.zshrc"
 
 # Safety nets
@@ -246,19 +249,10 @@ alias dc="docker compose"
 alias k="kubectl"
 alias t="tmux"
 
-# Show PATH entries one per line
 alias path='echo $PATH | tr ":" "\n"'
-
-# Quick HTTP server in current dir
 alias serve="python3 -m http.server 8080"
-
-# Human-readable disk usage, sorted by size
 alias duh="du -h --max-depth=1 | sort -h"
-
-# Show listening ports
 alias ports="lsof -iTCP -sTCP:LISTEN -P -n"
-
-# Copy last command to clipboard (macOS/Linux)
 alias copy-last='fc -ln -1 | pbcopy 2>/dev/null || fc -ln -1 | xclip -sel clip'
 
 
@@ -279,25 +273,26 @@ function mkcd() {
 # Extract any archive
 function extract() {
   case "$1" in
-    *.tar.bz2)  tar xjf "$1"    ;;
-    *.tar.gz)   tar xzf "$1"    ;;
-    *.tar.xz)   tar xJf "$1"    ;;
-    *.tar.zst)  tar --zstd -xf "$1" ;;
-    *.bz2)      bunzip2 "$1"    ;;
-    *.gz)       gunzip "$1"     ;;
-    *.zip)      unzip "$1"      ;;
-    *.7z)       7z x "$1"       ;;
-    *.rar)      unrar x "$1"    ;;
-    *.tar)      tar xf "$1"     ;;
+    *.tar.bz2)  tar xjf "$1"         ;;
+    *.tar.gz)   tar xzf "$1"         ;;
+    *.tar.xz)   tar xJf "$1"         ;;
+    *.tar.zst)  tar --zstd -xf "$1"  ;;
+    *.bz2)      bunzip2 "$1"         ;;
+    *.gz)       gunzip "$1"          ;;
+    *.zip)      unzip "$1"           ;;
+    *.7z)       7z x "$1"            ;;
+    *.rar)      unrar x "$1"         ;;
+    *.tar)      tar xf "$1"          ;;
     *)          echo "'$1' cannot be extracted via extract()" ;;
   esac
 }
 
 # zoxide-powered fuzzy cd into frecent directories
 function fcd() {
-  local dir
   if command -v zoxide &>/dev/null; then
-    dir=$(zoxide query -l | fzf --preview 'eza --tree --level=2 --color=always {}' --preview-window=right:50%) && cd "$dir"
+    local dir
+    dir=$(zoxide query -l | fzf --preview 'eza --tree --level=2 --color=always {}' --preview-window=right:50%) \
+      && cd "$dir"
   fi
 }
 
@@ -322,23 +317,22 @@ function glog() {
     --bind 'enter:execute(git show {1} | bat --color=always | less -R)'
 }
 
-# Rename files with neovim (visually!)
+# Rename files in current dir using vidir (moreutils)
 function vidir() {
-  local tmpfile=$(mktemp)
-  ls > "$tmpfile"
-  nvim "$tmpfile"
-  # Apply renames (requires vidir from moreutils, fallback to manual)
-  command -v vidir &>/dev/null && command vidir . || cat "$tmpfile"
-  rm "$tmpfile"
+  if command -v vidir &>/dev/null; then
+    command vidir .
+  else
+    echo "vidir not found — install moreutils: brew install moreutils"
+  fi
 }
 
 
 # ============================================================
 # AUTOSUGGESTIONS TUNING
 # ============================================================
-ZSH_AUTOSUGGEST_STRATEGY=(history completion)  # Try history first, then completion
+ZSH_AUTOSUGGEST_STRATEGY=(history completion)
 ZSH_AUTOSUGGEST_BUFFER_MAX_SIZE=20
-ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE='fg=#6c7086'   # Subtle grey (Catppuccin surface2)
+ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE='fg=#6c7086'
 ZSH_AUTOSUGGEST_USE_ASYNC=true
 
 
@@ -363,17 +357,19 @@ ZSH_HIGHLIGHT_STYLES[comment]='fg=#6c7086,italic'
 # ============================================================
 HISTORY_SUBSTRING_SEARCH_HIGHLIGHT_FOUND='bg=magenta,fg=white,bold'
 HISTORY_SUBSTRING_SEARCH_HIGHLIGHT_NOT_FOUND='bg=red,fg=white,bold'
-HISTORY_SUBSTRING_SEARCH_GLOBBING_FLAGS='i'   # Case-insensitive
+HISTORY_SUBSTRING_SEARCH_GLOBBING_FLAGS='i'
+
+
+# ============================================================
+# ZOXIDE — smart directory navigation
+# ============================================================
+if command -v zoxide &>/dev/null; then
+  eval "$(zoxide init zsh)"
+fi
 
 
 # ============================================================
 # TMUX — auto-attach or create session named 'main'
+# (kept last so everything above is available inside tmux)
 # ============================================================
 [ -z "$TMUX" ] && exec tmux new-session -A -s main
-eval "$(/opt/homebrew/bin/brew shellenv)"
-export PATH="$HOME/.cargo/bin:$PATH"
-
-# Initialize zoxide (Blazing fast smart directory navigation)
-if command -v zoxide &>/dev/null; then
-  eval "$(zoxide init zsh)"
-fi
