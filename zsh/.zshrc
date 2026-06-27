@@ -31,9 +31,6 @@ zinit light zsh-users/zsh-history-substring-search
 # Handy aliases: gst, gco, glog, etc.
 zinit snippet OMZP::git
 
-# Jump to frecent dirs with `z foo`
-zinit light agkozak/zsh-z
-
 # Colored man pages
 zinit snippet OMZP::colored-man-pages
 
@@ -200,22 +197,32 @@ export FZF_ALT_C_COMMAND='fd --type d --hidden --follow --exclude .git'
 # ============================================================
 # ALIASES — Core
 # ============================================================
-alias cat="bat"                                      # Better cat
-alias ls="gls -Ap --group-directories-first --color=auto"
-alias ll="gls -lAph --group-directories-first --color=auto"
-alias lt="gls -lAph --sort=time --color=auto"        # Sort by time
-alias lS="gls -lApSh --color=auto"                   # Sort by size
+alias cat="bat"                                       # Better cat
+
+# Upgraded to eza for rich visual context and Git awareness
+if command -v eza &>/dev/null; then
+  alias ls="eza --icons=always --group-directories-first"
+  alias ll="eza -lAph --icons=always --git --group-directories-first"
+  alias lt="eza -lAph --sort=time --icons=always --group-directories-first"
+  alias lS="eza -lApSh --icons=always --group-directories-first"
+  alias tree="eza --tree --icons=always"
+else
+  alias ls="gls -Ap --group-directories-first --color=auto"
+  alias ll="gls -lAph --group-directories-first --color=auto"
+  alias lt="gls -lAph --sort=time --color=auto"
+  alias lS="gls -lApSh --color=auto"
+fi
 
 alias ..="cd .."
 alias ...="cd ../.."
 alias ....="cd ../../.."
 
-alias grep="grep --color=auto"
+alias grep="rg"
 alias diff="diff --color=auto"
 alias ip="ip --color=auto"
 alias du="du -h"
 alias df="df -h"
-alias free="free -h"
+alias free="vm_stat"  # macOS memory statistics page replacement
 alias mkdir="mkdir -pv"
 
 alias so="exec zsh"                                  # Reload shell
@@ -249,7 +256,7 @@ alias serve="python3 -m http.server 8080"
 alias duh="du -h --max-depth=1 | sort -h"
 
 # Show listening ports
-alias ports="ss -tulpn"
+alias ports="lsof -iTCP -sTCP:LISTEN -P -n"
 
 # Copy last command to clipboard (macOS/Linux)
 alias copy-last='fc -ln -1 | pbcopy 2>/dev/null || fc -ln -1 | xclip -sel clip'
@@ -286,12 +293,12 @@ function extract() {
   esac
 }
 
-# fzf-powered cd into frecent directories
+# zoxide-powered fuzzy cd into frecent directories
 function fcd() {
   local dir
-  dir=$(z -l 2>/dev/null | awk '{print $2}' | fzf \
-    --preview 'ls --color=always {}' \
-    --preview-window=right:50%) && cd "$dir"
+  if command -v zoxide &>/dev/null; then
+    dir=$(zoxide query -l | fzf --preview 'eza --tree --level=2 --color=always {}' --preview-window=right:50%) && cd "$dir"
+  fi
 }
 
 # Fuzzy-search and open file in editor
@@ -365,3 +372,8 @@ HISTORY_SUBSTRING_SEARCH_GLOBBING_FLAGS='i'   # Case-insensitive
 [ -z "$TMUX" ] && exec tmux new-session -A -s main
 eval "$(/opt/homebrew/bin/brew shellenv)"
 export PATH="$HOME/.cargo/bin:$PATH"
+
+# Initialize zoxide (Blazing fast smart directory navigation)
+if command -v zoxide &>/dev/null; then
+  eval "$(zoxide init zsh)"
+fi
