@@ -1,0 +1,26 @@
+Completion:
+  AllScopes: Yes               # suggest symbols from unimported namespaces/scopes
+  ArgumentLists: FullPlaceholders  # insert named placeholders when completing a function
+  HeaderInsertion: IWYU        # auto-add #include when completing an unimported symbol
+
+InlayHints:
+  Enabled: Yes
+  ParameterNames: Yes          # show param: labels at call sites
+  DeducedTypes: Yes            # show inferred types for `auto`
+  Designators: Yes             # show .field= in struct initialisers
+  BlockEnd: No                 # don't annotate closing braces (too noisy)
+  DefaultArguments: No         # don't show defaulted args (too noisy)
+
+Hover:
+  ShowAKA: Yes                 # show underlying type for typedefs, e.g. uint32_t (aka unsigned int)
+
+Diagnostics:
+  UnusedIncludes: Strict       # warn on #includes that aren't needed
+  MissingIncludes: Strict      # warn when a symbol is used without its header
+  ClangTidy:
+    Add:
+      - bugprone-*             # catch common bug patterns
+      - performance-*          # catch performance anti-patterns
+    Remove:
+      - bugprone-easily-swappable-parameters  # too noisy for C
+    FastCheckFilter: Loose     # run more checks without slowing clangd too much
