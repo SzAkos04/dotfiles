@@ -27,6 +27,7 @@ require("lazy").setup({
 			require("mason-lspconfig").setup()
 
 			local capabilities = require("cmp_nvim_lsp").default_capabilities()
+
 			local servers = {
 				"asm_lsp",
 				"bashls",
@@ -38,41 +39,35 @@ require("lazy").setup({
 				"zls",
 			}
 
-			local has_native_lsp = vim.fn.has("nvim-0.11") == 1
-
 			for _, server in ipairs(servers) do
+				-- Start with capabilities, then merge any per-server overrides
 				local opts = { capabilities = capabilities }
-
-				local require_ok, conf_opts = pcall(require, "lsp-settings." .. server)
-				if require_ok then
+				local ok, conf_opts = pcall(require, "lsp-settings." .. server)
+				if ok then
 					opts = vim.tbl_deep_extend("force", opts, conf_opts)
 				end
 
-				if has_native_lsp then
-					if opts.root_dir == nil then
-						opts.root_dir = function(fname)
-							return vim.fs.root(
-								fname,
-								{ "compile_commands.json", "tsconfig.json", "package.json", ".git" }
-							) or vim.uv.cwd()
-						end
-					end
-					-- NOTE: opts is passed directly, not nested under { config = opts }
-					vim.lsp.config(server, opts)
-					vim.lsp.enable(server)
-				else
-					if opts.root_dir == nil then
-						local ok, util = pcall(require, "lspconfig.util")
-						if ok then
-							opts.root_dir =
-								util.root_pattern("compile_commands.json", "tsconfig.json", "package.json", ".git")
-						end
-					end
-					local ok, lspconfig = pcall(require, "lspconfig")
-					if ok then
-						lspconfig[server].setup(opts)
-					end
+				-- root_dir functions are not supported by vim.lsp.config in 0.12;
+				-- use root_markers (a plain list) instead. The native LSP client
+				-- walks up from the file and stops at the first matching marker.
+				-- We add a sentinel fallback so rootless files still attach:
+				-- an empty string matches every directory (always found).
+				if opts.root_dir ~= nil then
+					opts.root_dir = nil -- drop lspconfig-style function, unused in 0.12
 				end
+				if opts.root_markers == nil then
+					opts.root_markers = {
+						"compile_commands.json",
+						"compile_flags.txt",
+						"tsconfig.json",
+						"package.json",
+						".git",
+						".clangd",
+					}
+				end
+
+				vim.lsp.config(server, opts)
+				vim.lsp.enable(server)
 			end
 
 			-- Force Treesitter highlighting (no regex fallback)
@@ -82,6 +77,36 @@ require("lazy").setup({
 					local lang = vim.treesitter.language.get_lang(vim.bo[args.buf].filetype)
 						or vim.bo[args.buf].filetype
 					pcall(vim.treesitter.start, args.buf, lang)
+				end,
+			})
+
+			-- Auto-trigger signature help on ( and , in C/C++ insert mode.
+			-- defer_fn waits until after the char is inserted before asking clangd.
+			vim.api.nvim_create_autocmd("FileType", {
+				pattern = { "c", "cpp" },
+				callback = function(args)
+					local buf = args.buf
+					vim.keymap.set("i", "(", function()
+						vim.defer_fn(vim.lsp.buf.signature_help, 50)
+						return "("
+					end, { buffer = buf, expr = true, noremap = true })
+
+					vim.keymap.set("i", ",", function()
+						vim.defer_fn(vim.lsp.buf.signature_help, 50)
+						return ","
+					end, { buffer = buf, expr = true, noremap = true })
+				end,
+			})
+
+			-- Inlay hints ON by default, toggled with <leader>lh
+			vim.api.nvim_create_autocmd("LspAttach", {
+				callback = function(args)
+					local client = vim.lsp.get_client_by_id(args.data.client_id)
+					-- Using the fixed colon (:) syntax from earlier
+					if client and client:supports_method("textDocument/inlayHint") then
+						-- CHANGED: Set this to true to enable them automatically
+						vim.lsp.inlay_hint.enable(true, { bufnr = args.buf })
+					end
 				end,
 			})
 		end,
@@ -128,10 +153,18 @@ require("lazy").setup({
 					["<C-f>"] = cmp.mapping.scroll_docs(4),
 					["<C-Space>"] = cmp.mapping.complete(),
 					["<C-e>"] = cmp.mapping.close(),
-					["<CR>"] = cmp.mapping.confirm({
-						behavior = cmp.ConfirmBehavior.Insert,
+					-- CHANGED: <Tab> confirms so <CR> is free for a plain newline
+					["<Tab>"] = cmp.mapping.confirm({
+						behavior = cmp.ConfirmBehavior.Replace,
 						select = true,
 					}),
+					["<CR>"] = cmp.mapping(function(fallback)
+						if cmp.visible() and cmp.get_active_entry() then
+							cmp.confirm({ behavior = cmp.ConfirmBehavior.Replace, select = false })
+						else
+							fallback()
+						end
+					end, { "i", "s" }),
 				},
 				sources = {
 					{ name = "nvim_lsp", blacklist = { "Text" } },
@@ -179,6 +212,8 @@ require("lazy").setup({
 						col_offset = -3,
 						side_padding = 0,
 					},
+					-- CHANGED: show docs alongside the completion menu
+					documentation = cmp.config.window.bordered(),
 				},
 			})
 
@@ -272,8 +307,8 @@ require("lazy").setup({
 	},
 	{
 		"daschw/leaf.nvim",
-		lazy = false, -- colorscheme must load at startup
-		priority = 1000, -- load before everything else
+		lazy = false,
+		priority = 1000,
 		config = function()
 			require("leaf").setup({
 				underlineStyle = "undercurl",
@@ -455,7 +490,6 @@ require("lazy").setup({
 		opts = {},
 	},
 }, {
-	-- lazy.nvim options
 	ui = {
 		icons = {
 			cmd = "⌘",

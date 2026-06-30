@@ -35,11 +35,15 @@ vim.o.autochdir = false
 vim.o.spelllang = "en_us"
 vim.o.cmdheight = 1
 vim.o.shell = "/bin/zsh"
-if vim.bo.filetype == "c" or vim.bo.filetype == "cpp" then
-	vim.o.cindent = true
-end
 
--- Set relative number in normal mode and no relative number in insert mode
+vim.api.nvim_create_autocmd("FileType", {
+	pattern = { "c", "cpp" },
+	callback = function()
+		vim.bo.cindent = true
+	end,
+})
+
+-- relative number in normal mode only
 vim.api.nvim_create_autocmd("InsertEnter", {
 	pattern = "*",
 	callback = function()
@@ -53,10 +57,15 @@ vim.api.nvim_create_autocmd("InsertLeave", {
 	end,
 })
 
--- Disable auto comment on newline
-vim.cmd("autocmd FileType * setlocal formatoptions-=c formatoptions-=r formatoptions-=o")
+-- disable auto-comment continuation on newline
+vim.api.nvim_create_autocmd("FileType", {
+	pattern = "*",
+	callback = function()
+		vim.opt_local.formatoptions:remove({ "c", "r", "o" })
+	end,
+})
 
--- Autoformat on save
+-- autoformat on save
 vim.api.nvim_create_autocmd("BufWritePre", {
 	pattern = "*",
 	callback = function()
@@ -64,7 +73,7 @@ vim.api.nvim_create_autocmd("BufWritePre", {
 	end,
 })
 
--- Disable spell check for terminal windows
+-- disable spell check in terminal
 vim.api.nvim_create_autocmd("TermOpen", {
 	pattern = "*",
 	callback = function()
