@@ -32,6 +32,18 @@ vim.keymap.set("n", "<leader>c", function()
 	require("bufdelete").bufdelete(0)
 end, { noremap = true, silent = true })
 
+-- trouble: pretty diagnostics / references list
+vim.keymap.set("n", "<leader>xx", ":Trouble diagnostics toggle<CR>", { noremap = true, silent = true })
+vim.keymap.set("n", "<leader>xd", ":Trouble diagnostics toggle filter.buf=0<CR>", { noremap = true, silent = true })
+
+-- Run `make` in a real terminal split instead of `:!make`.
+-- noice.nvim's cmdline/message override doesn't capture `:!` shell output
+-- on nvim 0.11+ (upstream bug, not fixable from config), so a terminal
+-- buffer sidesteps it entirely -- and it's more readable besides.
+vim.keymap.set("n", "<leader>rm", function()
+	vim.cmd("botright 15split | terminal make -B")
+end, { noremap = true, silent = true, desc = "Run make in terminal split" })
+
 -- LSP hover
 vim.keymap.set("n", "<leader><Space>", vim.lsp.buf.hover, { noremap = true, silent = true })
 
@@ -71,3 +83,16 @@ vim.api.nvim_create_autocmd("LspAttach", {
 		end, opts)
 	end,
 })
+
+-- which-key: label the leader groups so the popup reads like a menu
+-- instead of a flat list of raw keys
+local ok_wk, wk = pcall(require, "which-key")
+if ok_wk then
+	wk.add({
+		{ "<leader>f", group = "find (telescope)" },
+		{ "<leader>x", group = "trouble/diagnostics" },
+		{ "<leader>r", group = "refactor/rename" },
+		{ "<leader>s", group = "swap operands" },
+		{ "g", group = "goto (lsp)" },
+	})
+end

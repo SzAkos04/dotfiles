@@ -26,6 +26,71 @@ require("lazy").setup({
 			require("mason").setup()
 			require("mason-lspconfig").setup()
 
+			-- Readable diagnostics: only show inline text on the current line
+			-- (keeps other lines clean), with a nicer floating window for
+			-- <leader>gh / hover-style diagnostic lookups.
+			vim.diagnostic.config({
+				underline = true,
+				severity_sort = true,
+				update_in_insert = false,
+				virtual_text = {
+					prefix = "●",
+					spacing = 4,
+					-- keep long messages from wrapping/crowding the buffer;
+					-- press <leader>gh (hover) or trigger the float for the full text
+					format = function(diagnostic)
+						local msg = diagnostic.message
+						if #msg > 60 then
+							return msg:sub(1, 57) .. "..."
+						end
+						return msg
+					end,
+				},
+				signs = {
+					text = {
+						[vim.diagnostic.severity.ERROR] = "",
+						[vim.diagnostic.severity.WARN] = "",
+						[vim.diagnostic.severity.INFO] = "",
+						[vim.diagnostic.severity.HINT] = "󰌵",
+					},
+				},
+				float = {
+					border = "rounded",
+					source = true,
+					header = "",
+					prefix = "",
+				},
+			})
+
+			-- Auto-popup the full diagnostic message after a short idle pause,
+			-- independent of `updatetime` (which is 50ms for gitsigns, too
+			-- fast for this) so it doesn't flash on every micro-pause.
+			local diag_float_timer = nil
+			vim.api.nvim_create_autocmd({ "CursorMoved", "CursorMovedI" }, {
+				callback = function()
+					if diag_float_timer then
+						diag_float_timer:stop()
+					end
+					diag_float_timer = vim.defer_fn(function()
+						vim.diagnostic.open_float(nil, { focus = false, scope = "cursor" })
+					end, 300)
+				end,
+			})
+
+			-- The built-in signature_help handler calls vim.notify("No signature
+			-- help available") whenever the request comes back empty. Since we
+			-- auto-trigger this on every "(" and "," in C/C++, that fires
+			-- constantly for harmless cases (comments, macros, etc). Override
+			-- it to just do nothing when there's no result, and behave
+			-- normally otherwise.
+			local default_sig_handler = vim.lsp.handlers["textDocument/signatureHelp"]
+			vim.lsp.handlers["textDocument/signatureHelp"] = function(err, result, ctx, config)
+				if err or not result or not result.signatures or #result.signatures == 0 then
+					return
+				end
+				return default_sig_handler(err, result, ctx, config)
+			end
+
 			local capabilities = require("cmp_nvim_lsp").default_capabilities()
 
 			local servers = {
@@ -232,6 +297,88 @@ require("lazy").setup({
 		"j-hui/fidget.nvim",
 		event = "LspAttach",
 		opts = {},
+	},
+
+	-- Pretty, non-blocking notifications (used by noice + plugins that call vim.notify)
+	{
+		"rcarriga/nvim-notify",
+		opts = {
+			timeout = 3000,
+			render = "compact",
+			stages = "fade",
+			-- leaf.nvim runs with a transparent Normal background, so notify
+			-- has nothing to sample for its fade-out colour; give it one
+			-- explicitly to silence the "no background highlight" warning.
+			background_colour = "#1a1a1a",
+		},
+		config = function(_, opts)
+			local notify = require("notify")
+			notify.setup(opts)
+			vim.notify = notify
+		end,
+	},
+
+	-- Replaces the cmdline/messages area with floating, readable UI
+	{
+		"folke/noice.nvim",
+		event = "VeryLazy",
+		dependencies = { "MunifTanjim/nui.nvim", "rcarriga/nvim-notify" },
+		opts = {
+			lsp = {
+				override = {
+					["vim.lsp.util.convert_input_to_markdown_lines"] = true,
+					["vim.lsp.util.stylize_markdown"] = true,
+					["cmp.entry.get_documentation"] = true,
+				},
+			},
+			presets = {
+				bottom_search = true,
+				command_palette = true,
+				long_message_to_split = true,
+				lsp_doc_border = true,
+			},
+		},
+	},
+
+	-- Nicer vim.ui.select / vim.ui.input (rename, code actions, etc.)
+	{
+		"stevearc/dressing.nvim",
+		event = "VeryLazy",
+		opts = {},
+	},
+
+	-- Discoverable keymaps: shows a popup of available bindings as you type
+	{
+		"folke/which-key.nvim",
+		event = "VeryLazy",
+		opts = {
+			preset = "modern",
+			delay = 300,
+		},
+	},
+
+	-- Pretty, navigable diagnostics/references/quickfix list
+	{
+		"folke/trouble.nvim",
+		cmd = "Trouble",
+		dependencies = { "nvim-tree/nvim-web-devicons" },
+		opts = {},
+	},
+
+	-- Buffer/tab bar
+	{
+		"akinsho/bufferline.nvim",
+		event = "BufReadPost",
+		dependencies = { "nvim-tree/nvim-web-devicons" },
+		opts = {
+			options = {
+				diagnostics = "nvim_lsp",
+				separator_style = "thin",
+				show_buffer_close_icons = false,
+				show_close_icon = false,
+				always_show_bufferline = true,
+			},
+		},
 	},
 
 	-- UI
