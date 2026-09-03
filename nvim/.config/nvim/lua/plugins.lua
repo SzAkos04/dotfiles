@@ -1,6 +1,6 @@
 -- Bootstrap lazy.nvim
 local lazypath = vim.fn.stdpath("data") .. "/lazy/lazy.nvim"
-if not vim.loop.fs_stat(lazypath) then
+if not vim.uv.fs_stat(lazypath) then
 	vim.fn.system({
 		"git",
 		"clone",
@@ -20,15 +20,12 @@ require("lazy").setup({
 		dependencies = {
 			"williamboman/mason.nvim",
 			"williamboman/mason-lspconfig.nvim",
-			"hrsh7th/cmp-nvim-lsp",
+			"saghen/blink.cmp", -- capabilities forrása; a dependency biztosítja, hogy rtp-n legyen mire a config() lefut
 		},
 		config = function()
 			require("mason").setup()
 			require("mason-lspconfig").setup()
 
-			-- Readable diagnostics: only show inline text on the current line
-			-- (keeps other lines clean), with a nicer floating window for
-			-- <leader>gh / hover-style diagnostic lookups.
 			vim.diagnostic.config({
 				underline = true,
 				severity_sort = true,
@@ -36,8 +33,6 @@ require("lazy").setup({
 				virtual_text = {
 					prefix = "●",
 					spacing = 4,
-					-- keep long messages from wrapping/crowding the buffer;
-					-- press <leader>gh (hover) or trigger the float for the full text
 					format = function(diagnostic)
 						local msg = diagnostic.message
 						if #msg > 60 then
@@ -62,9 +57,6 @@ require("lazy").setup({
 				},
 			})
 
-			-- Auto-popup the full diagnostic message after a short idle pause,
-			-- independent of `updatetime` (which is 50ms for gitsigns, too
-			-- fast for this) so it doesn't flash on every micro-pause.
 			local diag_float_timer = nil
 			vim.api.nvim_create_autocmd({ "CursorMoved", "CursorMovedI" }, {
 				callback = function()
@@ -77,21 +69,8 @@ require("lazy").setup({
 				end,
 			})
 
-			-- The built-in signature_help handler calls vim.notify("No signature
-			-- help available") whenever the request comes back empty. Since we
-			-- auto-trigger this on every "(" and "," in C/C++, that fires
-			-- constantly for harmless cases (comments, macros, etc). Override
-			-- it to just do nothing when there's no result, and behave
-			-- normally otherwise.
-			local default_sig_handler = vim.lsp.handlers["textDocument/signatureHelp"]
-			vim.lsp.handlers["textDocument/signatureHelp"] = function(err, result, ctx, config)
-				if err or not result or not result.signatures or #result.signatures == 0 then
-					return
-				end
-				return default_sig_handler(err, result, ctx, config)
-			end
-
-			local capabilities = require("cmp_nvim_lsp").default_capabilities()
+			-- CHANGED: capabilities most blink.cmp-ből
+			local capabilities = require("blink.cmp").get_lsp_capabilities()
 
 			local servers = {
 				"asm_lsp",
@@ -105,20 +84,14 @@ require("lazy").setup({
 			}
 
 			for _, server in ipairs(servers) do
-				-- Start with capabilities, then merge any per-server overrides
 				local opts = { capabilities = capabilities }
 				local ok, conf_opts = pcall(require, "lsp-settings." .. server)
 				if ok then
 					opts = vim.tbl_deep_extend("force", opts, conf_opts)
 				end
 
-				-- root_dir functions are not supported by vim.lsp.config in 0.12;
-				-- use root_markers (a plain list) instead. The native LSP client
-				-- walks up from the file and stops at the first matching marker.
-				-- We add a sentinel fallback so rootless files still attach:
-				-- an empty string matches every directory (always found).
 				if opts.root_dir ~= nil then
-					opts.root_dir = nil -- drop lspconfig-style function, unused in 0.12
+					opts.root_dir = nil
 				end
 				if opts.root_markers == nil then
 					opts.root_markers = {
@@ -135,7 +108,6 @@ require("lazy").setup({
 				vim.lsp.enable(server)
 			end
 
-			-- Force Treesitter highlighting (no regex fallback)
 			vim.api.nvim_create_autocmd("FileType", {
 				pattern = { "c", "cpp", "lua", "python", "rust", "bash", "javascript", "typescript" },
 				callback = function(args)
@@ -145,31 +117,10 @@ require("lazy").setup({
 				end,
 			})
 
-			-- Auto-trigger signature help on ( and , in C/C++ insert mode.
-			-- defer_fn waits until after the char is inserted before asking clangd.
-			vim.api.nvim_create_autocmd("FileType", {
-				pattern = { "c", "cpp" },
-				callback = function(args)
-					local buf = args.buf
-					vim.keymap.set("i", "(", function()
-						vim.defer_fn(vim.lsp.buf.signature_help, 50)
-						return "("
-					end, { buffer = buf, expr = true, noremap = true })
-
-					vim.keymap.set("i", ",", function()
-						vim.defer_fn(vim.lsp.buf.signature_help, 50)
-						return ","
-					end, { buffer = buf, expr = true, noremap = true })
-				end,
-			})
-
-			-- Inlay hints ON by default, toggled with <leader>lh
 			vim.api.nvim_create_autocmd("LspAttach", {
 				callback = function(args)
 					local client = vim.lsp.get_client_by_id(args.data.client_id)
-					-- Using the fixed colon (:) syntax from earlier
 					if client and client:supports_method("textDocument/inlayHint") then
-						-- CHANGED: Set this to true to enable them automatically
 						vim.lsp.inlay_hint.enable(true, { bufnr = args.buf })
 					end
 				end,
@@ -177,138 +128,133 @@ require("lazy").setup({
 		end,
 	},
 
-	-- Autocompletion
+	-- Autocompletion (blink.cmp — nvim-cmp helyett: gyorsabb, natív Lua/Rust fuzzy matcher)
 	{
-		"hrsh7th/nvim-cmp",
+		"saghen/blink.cmp",
 		event = "InsertEnter",
+		version = "*",
 		dependencies = {
-			"hrsh7th/cmp-nvim-lsp",
-			"hrsh7th/cmp-buffer",
-			"hrsh7th/cmp-path",
-			"hrsh7th/cmp-cmdline",
-			"hrsh7th/cmp-vsnip",
-			"hrsh7th/vim-vsnip",
+			"rafamadriz/friendly-snippets",
+			"saghen/blink.compat",
 			"hrsh7th/cmp-calc",
-			"onsails/lspkind.nvim",
-			"lukas-reineke/cmp-under-comparator",
-			"windwp/nvim-autopairs",
 		},
-		config = function()
-			local custom_menu_icon = {
-				nvim_lsp = "",
-				vsnip = "",
-				calc = "󰃬",
+		opts = {
+			keymap = {
+				preset = "none",
+				["<C-p>"] = { "select_prev", "fallback" },
+				["<C-n>"] = { "select_next", "fallback" },
+				["<C-b>"] = { "scroll_documentation_up", "fallback" },
+				["<C-f>"] = { "scroll_documentation_down", "fallback" },
+				["<C-space>"] = { "show", "fallback" },
+				["<C-e>"] = { "hide", "fallback" },
+				["<Tab>"] = { "select_and_accept", "fallback" },
+				["<CR>"] = { "select_and_accept", "fallback" },
+			},
+			appearance = {
+				nerd_font_variant = "mono",
+				use_nvim_cmp_as_default = false, -- CHANGED: már nem kell, catppuccin natívan színez
+			},
+			completion = {
+				accept = { auto_brackets = { enabled = true } },
+				documentation = { auto_show = true, auto_show_delay_ms = 200 },
+				menu = {
+					border = "rounded",
+					draw = {
+						treesitter = { "lsp" },
+						columns = {
+							{ "kind_icon" },
+							{ "label", "label_description", gap = 1 },
+							{ "source_name" },
+						},
+						components = {
+							source_name = {
+								width = { max = 4 }, -- CHANGED: rövid kód, nem csonkolt szöveg
+								text = function(ctx)
+									local short = {
+										LSP = "LSP",
+										Path = "Path",
+										Snippets = "Snip",
+										Buffer = "Buf",
+										Calc = "Calc",
+									}
+									return short[ctx.source_name] or ctx.source_name:sub(1, 4)
+								end,
+								highlight = "BlinkCmpSource",
+							},
+						},
+					},
+				},
+			},
+			signature = { enabled = true },
+			cmdline = { enabled = true },
+			sources = {
+				default = { "lsp", "path", "snippets", "buffer", "calc" },
+				providers = {
+					calc = { name = "calc", module = "blink.compat.source" },
+				},
+			},
+		},
+		-- CHANGED: config function, ami az opts.setup UTÁN explicit
+		-- BlinkCmpKind<Kind> színeket ad, mert a leaf.nvim ezt maga nem teszi meg
+		config = function(_, opts)
+			require("blink.cmp").setup(opts)
+
+			local kind_colors = {
+				Function = "#89b4fa",
+				Method = "#89b4fa",
+				Constructor = "#89b4fa",
+				Variable = "#cdd6f4",
+				Field = "#cdd6f4",
+				Property = "#cdd6f4",
+				Class = "#f9e2af",
+				Interface = "#f9e2af",
+				Struct = "#f9e2af",
+				Enum = "#f9e2af",
+				EnumMember = "#fab387",
+				Keyword = "#cba6f7",
+				Snippet = "#a6e3a1",
+				Constant = "#fab387",
+				Text = "#a6adc8",
+				Module = "#94e2d5",
+				File = "#94e2d5",
+				Folder = "#94e2d5",
+				Operator = "#f38ba8",
+				Reference = "#f38ba8",
+				TypeParameter = "#f9e2af",
+				Value = "#fab387",
 			}
 
-			require("nvim-autopairs").setup({})
-			local cmp_autopairs = require("nvim-autopairs.completion.cmp")
-			local cmp = require("cmp")
-			cmp.event:on("confirm_done", cmp_autopairs.on_confirm_done())
+			local function apply_kind_colors()
+				for kind, color in pairs(kind_colors) do
+					vim.api.nvim_set_hl(0, "BlinkCmpKind" .. kind, { fg = color })
+				end
+			end
 
-			cmp.setup({
-				snippet = {
-					expand = function(args)
-						vim.fn["vsnip#anonymous"](args.body)
-					end,
-				},
-				mapping = {
-					["<C-p>"] = cmp.mapping.select_prev_item(),
-					["<C-n>"] = cmp.mapping.select_next_item(),
-					["<C-b>"] = cmp.mapping.scroll_docs(-4),
-					["<C-f>"] = cmp.mapping.scroll_docs(4),
-					["<C-Space>"] = cmp.mapping.complete(),
-					["<C-e>"] = cmp.mapping.close(),
-					-- CHANGED: <Tab> confirms so <CR> is free for a plain newline
-					["<Tab>"] = cmp.mapping.confirm({
-						behavior = cmp.ConfirmBehavior.Replace,
-						select = true,
-					}),
-					["<CR>"] = cmp.mapping(function(fallback)
-						if cmp.visible() and cmp.get_active_entry() then
-							cmp.confirm({ behavior = cmp.ConfirmBehavior.Replace, select = false })
-						else
-							fallback()
-						end
-					end, { "i", "s" }),
-				},
-				sources = {
-					{ name = "nvim_lsp", blacklist = { "Text" } },
-					{ name = "vsnip" },
-					{ name = "calc" },
-					{ name = "path" },
-					{ name = "git" },
-				},
-				completion = {
-					completeopt = "menu,menuone,noinsert",
-				},
-				formatting = {
-					format = function(entry, vim_item)
-						if custom_menu_icon[entry.source.name] then
-							vim_item.kind = custom_menu_icon[entry.source.name] .. " " .. vim_item.kind
-						else
-							vim_item.kind = require("lspkind").presets.default[vim_item.kind] .. " " .. vim_item.kind
-						end
-						vim_item.menu = ({
-							nvim_lsp = "[LSP]",
-							vsnip = "[VSnip]",
-							calc = "[Calc]",
-							buffer = "[Buffer]",
-							path = "[Path]",
-							git = "[Git]",
-						})[entry.source.name]
-						return vim_item
-					end,
-				},
-				sorting = {
-					comparators = {
-						cmp.config.compare.offset,
-						cmp.config.compare.exact,
-						cmp.config.compare.score,
-						require("cmp-under-comparator").under,
-						cmp.config.compare.kind,
-						cmp.config.compare.sort_text,
-						cmp.config.compare.length,
-						cmp.config.compare.order,
-					},
-				},
-				window = {
-					completion = {
-						winhighlight = "Normal:Pmenu,FloatBorder:Pmenu,Search:None",
-						col_offset = -3,
-						side_padding = 0,
-					},
-					-- CHANGED: show docs alongside the completion menu
-					documentation = cmp.config.window.bordered(),
-				},
-			})
-
-			cmp.setup.filetype("gitcommit", {
-				sources = cmp.config.sources({
-					{ name = "git" },
-				}, {
-					{ name = "buffer" },
-				}),
-			})
+			apply_kind_colors()
+			-- colorscheme-váltás után is megmaradjon
+			vim.api.nvim_create_autocmd("ColorScheme", { callback = apply_kind_colors })
 		end,
 	},
 
-	-- Notifications / LSP progress
+	-- Auto-closing brackets (önállóan; a cmp-integrációs hook már nem kell, ld. auto_brackets fent)
+	{
+		"windwp/nvim-autopairs",
+		event = "InsertEnter",
+		opts = {},
+	},
+
 	{
 		"j-hui/fidget.nvim",
 		event = "LspAttach",
 		opts = {},
 	},
 
-	-- Pretty, non-blocking notifications (used by noice + plugins that call vim.notify)
 	{
 		"rcarriga/nvim-notify",
 		opts = {
 			timeout = 3000,
 			render = "compact",
 			stages = "fade",
-			-- leaf.nvim runs with a transparent Normal background, so notify
-			-- has nothing to sample for its fade-out colour; give it one
-			-- explicitly to silence the "no background highlight" warning.
 			background_colour = "#1a1a1a",
 		},
 		config = function(_, opts)
@@ -318,7 +264,6 @@ require("lazy").setup({
 		end,
 	},
 
-	-- Replaces the cmdline/messages area with floating, readable UI
 	{
 		"folke/noice.nvim",
 		event = "VeryLazy",
@@ -340,14 +285,12 @@ require("lazy").setup({
 		},
 	},
 
-	-- Nicer vim.ui.select / vim.ui.input (rename, code actions, etc.)
 	{
 		"stevearc/dressing.nvim",
 		event = "VeryLazy",
 		opts = {},
 	},
 
-	-- Discoverable keymaps: shows a popup of available bindings as you type
 	{
 		"folke/which-key.nvim",
 		event = "VeryLazy",
@@ -357,7 +300,6 @@ require("lazy").setup({
 		},
 	},
 
-	-- Pretty, navigable diagnostics/references/quickfix list
 	{
 		"folke/trouble.nvim",
 		cmd = "Trouble",
@@ -365,7 +307,6 @@ require("lazy").setup({
 		opts = {},
 	},
 
-	-- Buffer/tab bar
 	{
 		"akinsho/bufferline.nvim",
 		event = "BufReadPost",
@@ -381,7 +322,6 @@ require("lazy").setup({
 		},
 	},
 
-	-- UI
 	{
 		"folke/todo-comments.nvim",
 		dependencies = { "nvim-lua/plenary.nvim" },
@@ -402,79 +342,76 @@ require("lazy").setup({
 		end,
 	},
 	{
-		"tamton-aquib/staline.nvim",
+		"nvim-lualine/lualine.nvim",
 		dependencies = { "nvim-tree/nvim-web-devicons" },
-		config = function()
-			require("staline").setup({
-				defaults = {
-					expand_null_ls = false,
-					full_path = vim.o.columns >= 128,
-					line_column = "[%l/%L] :%c",
-					inactive_color = "#303030",
-					inactive_bgcolor = "none",
-					true_colors = true,
-					font_active = "none",
-				},
-				mode_colors = {
-					n = "#83b28a",
-					i = "#9e77bd",
-					c = "#cd6169",
-					ic = "#cd6169",
-					v = "#e5bf79",
-					vl = "#e5bf79",
-					t = "#d2846d",
-				},
-				sections = {
-					left = { " ", "mode", " ", "branch", " ", "lsp" },
-					mid = { "file_name" },
-					right = { "lsp_name", " ", "line_column" },
-				},
-				inactive_sections = {
-					left = { "branch" },
-					mid = { "file_name" },
-					right = { "line_column" },
-				},
-				special_table = {
-					lazy = { "Lazy", "💤 " },
-				},
-				lsp_symbols = {
-					Error = " ",
-					Info = " ",
-					Warn = " ",
-					Hint = "󰌵 ",
-				},
-			})
-			require("stabline").setup({
-				style = "bar",
-				bg = "none",
-				fg = "#ffffff",
-				exclude_fts = { "Veil", "lazy" },
-			})
-		end,
+		event = "VeryLazy",
+		opts = {
+			options = {
+				theme = "catppuccin", -- pixel-pontosan ugyanaz a paletta, mint a colorscheme
+				component_separators = "",
+				section_separators = { left = "", right = "" },
+				globalstatus = true, -- illeszkedik a settings.lua laststatus=3 fixhez
+			},
+			sections = {
+				lualine_a = { "mode" },
+				lualine_b = { "branch", "diff" },
+				lualine_c = { { "filename", path = 1 } },
+				lualine_x = { "diagnostics", "filetype" },
+				lualine_y = { "progress" },
+				lualine_z = { "location" },
+			},
+		},
 	},
 	{
-		"daschw/leaf.nvim",
+		"catppuccin/nvim",
+		name = "catppuccin",
 		lazy = false,
 		priority = 1000,
 		config = function()
-			require("leaf").setup({
-				underlineStyle = "undercurl",
-				commentStyle = "italic",
-				functionStyle = "NONE",
-				keywordStyle = "italic",
-				statementStyle = "bold",
-				typeStyle = "NONE",
-				variablebuiltinStyle = "italic",
-				transparent = true,
-				colors = {},
-				overrides = {
-					Normal = { bg = "none" },
-					FloatBorder = { bg = "none" },
+			require("catppuccin").setup({
+				flavour = "mocha", -- ugyanaz a flavour, amit a tmux/alacritty is használ
+				transparent_background = true, -- editor bg átlátszó -> jön át az Alacritty blur
+				float = {
+					transparent = true, -- a float-ablak MAGA transzparens legyen a "keretén" kívül...
+					solid = true, -- ...de a tartalma szilárd hátteret kapjon -> ez oldja meg
+					--               a signature-help/completion "átlátszó, szöveg-átüt" bugot
 				},
-				theme = "auto",
-				contrast = "high",
+				term_colors = true,
+				styles = {
+					comments = { "italic" },
+					keywords = { "italic" },
+					functions = {},
+					types = {},
+				},
+				integrations = {
+					blink_cmp = true, -- innentől a blink.cmp kind-ikonjai natívan színesek
+					treesitter = true,
+					gitsigns = true,
+					noice = true,
+					notify = true,
+					mason = true,
+					which_key = true,
+					telescope = { enabled = true },
+					indent_blankline = { enabled = true, scope_color = "lavender" },
+					navic = { enabled = true, custom_bg = "NONE" },
+					native_lsp = {
+						enabled = true,
+						virtual_text = {
+							errors = { "italic" },
+							hints = { "italic" },
+							warnings = { "italic" },
+							information = { "italic" },
+						},
+						underlines = {
+							errors = { "underline" },
+							hints = { "underline" },
+							warnings = { "underline" },
+							information = { "underline" },
+						},
+					},
+				},
 			})
-			vim.cmd("colorscheme leaf")
+			vim.cmd("colorscheme catppuccin")
 		end,
 	},
 	{
@@ -546,11 +483,11 @@ require("lazy").setup({
 		end,
 	},
 
-	-- Treesitter
+	-- Treesitter (CHANGED: lazy=false → event-alapú, gyorsabb induláshoz)
 	{
 		"nvim-treesitter/nvim-treesitter",
 		build = ":TSUpdate",
-		lazy = false,
+		event = { "BufReadPost", "BufNewFile" },
 		dependencies = {
 			"windwp/nvim-ts-autotag",
 			"andymass/vim-matchup",
@@ -575,16 +512,10 @@ require("lazy").setup({
 		end,
 	},
 
-	-- Git
 	{ "tpope/vim-fugitive", cmd = { "Git", "G" } },
 
-	-- Editing utilities
-	{ "tpope/vim-commentary" },
-	{
-		"p00f/clangd_extensions.nvim",
-		ft = { "c", "cpp" },
-		opts = {},
-	},
+	-- CHANGED: vim-commentary törölve — Neovim 0.10+ natívan tudja a gc/gcc-t
+
 	{
 		"stevearc/conform.nvim",
 		event = "BufWritePre",
@@ -624,10 +555,7 @@ require("lazy").setup({
 		opts = {},
 	},
 	{ "ThePrimeagen/vim-be-good", cmd = "VimBeGood" },
-	{
-		"soulis-1256/eagle.nvim",
-		opts = {},
-	},
+	-- CHANGED: eagle.nvim törölve (redundáns a saját CursorMoved diagnosztika-floattal)
 	{ "Wansmer/binary-swap.nvim" },
 	{ "famiu/bufdelete.nvim" },
 	{ "wakatime/vim-wakatime", lazy = false },

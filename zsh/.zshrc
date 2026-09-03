@@ -14,21 +14,24 @@ if [ ! -d "$ZINIT_HOME" ]; then
 fi
 source "${ZINIT_HOME}/zinit.zsh"
 
-
 # ============================================================
-# PLUGINS (loaded via zinit — fast, lazy where possible)
+# PLUGINS (via TPM — Tmux Plugin Manager, illetve zinit turbo-mode-dal)
 # ============================================================
 
-# Fish-like autosuggestions (grey ghost text as you type)
+# Fish-like autosuggestions (grey ghost text as you type) — turbo: prompt után tölt
+zinit ice wait lucid atload'!_zsh_autosuggest_start'
 zinit light zsh-users/zsh-autosuggestions
 
 # Extra completions (kubectl, docker, cargo, npm, pip, etc.)
+zinit ice wait lucid blockf
 zinit light zsh-users/zsh-completions
 
 # fzf-tab: replace zsh's default tab menu with fzf fuzzy finder
+zinit ice wait lucid
 zinit light Aloxaf/fzf-tab
 
-# History search with up/down arrows (smarter than default)
+# History search with up/down arrows
+zinit ice wait lucid
 zinit light zsh-users/zsh-history-substring-search
 
 # Handy aliases: gst, gco, glog, etc.
@@ -37,9 +40,11 @@ zinit snippet OMZP::git
 # Colored man pages
 zinit snippet OMZP::colored-man-pages
 
+zinit ice wait lucid
 zinit light MichaelAquilina/zsh-auto-notify
 
-# Syntax highlighting (must come LAST — needs to wrap all widgets)
+# Syntax highlighting — MINDIG utoljára töltsön be, minden widgetet be kell csomagolnia
+zinit ice wait lucid atinit'zicompinit; zicdreplay'
 zinit light zsh-users/zsh-syntax-highlighting
 
 
@@ -48,6 +53,82 @@ AUTO_NOTIFY_THRESHOLD=10
 AUTO_NOTIFY_TITLE="Terminal"
 AUTO_NOTIFY_BODY="[%exit_code] %command (%elapsed)"
 AUTO_NOTIFY_EXPIRE_TIME=5000
+
+
+# ============================================================
+# PROMPT — Starship
+# ============================================================
+if command -v starship &>/dev/null; then
+  eval "$(starship init zsh)"
+else
+  autoload -Uz promptinit
+  promptinit
+  prompt adam1
+fi
+
+
+# ============================================================
+# HISTORY
+# ============================================================
+HISTSIZE=50000
+SAVEHIST=50000
+HISTFILE=~/.zsh_history
+
+setopt HIST_IGNORE_ALL_DUPS
+setopt HIST_IGNORE_SPACE
+setopt HIST_VERIFY
+setopt SHARE_HISTORY
+setopt EXTENDED_HISTORY
+
+
+# ============================================================
+# COMPLETION SYSTEM (CHANGED: cache-elt compinit — csak naponta 1x
+# fut a teljes fájl-átvizsgálás, egyébként -C flag-gel gyors induláshoz)
+# ============================================================
+autoload -Uz compinit
+if [[ -n ${ZDOTDIR:-$HOME}/.zcompdump(#qN.mh+24) ]]; then
+  compinit
+else
+  compinit -C
+fi
+# Megjegyzés: a zsh-syntax-highlighting fenti "ice" blokkja saját maga
+# hívja a zicompinit/zicdreplay-t turbo módban, ez a hívás a nem-turbo
+# ágra vonatkozik / biztonsági háló, ha valamiért a zinit ice nem futna le.
+
+zstyle ':completion:*' matcher-list \
+  '' \
+  'm:{a-z}={A-Z}' \
+  'm:{a-zA-Z}={A-Za-z}' \
+  'r:|[._-]=* r:|=* l:|=*'
+
+zstyle ':completion:*' group-name ''
+zstyle ':completion:*' format $'\e[1;33m── %d ──\e[0m'
+zstyle ':completion:*' verbose true
+
+zstyle ':completion:*' menu select
+zstyle ':completion:*:default' list-colors ${(s.:.)LS_COLORS}
+zstyle ':completion:*' list-colors ''
+
+zstyle ':completion:*' completer _expand _complete _correct _approximate
+zstyle ':completion:*:approximate:*' max-errors 2 numeric
+
+zstyle ':completion:*:*:kill:*:processes' \
+  list-colors '=(#b) #([0-9]#)*=0=01;31'
+zstyle ':completion:*:kill:*' command 'ps -u $USER -o pid,%cpu,tty,cputime,cmd'
+
+zstyle ':fzf-tab:complete:cd:*' fzf-preview 'ls --color $realpath'
+zstyle ':fzf-tab:complete:*' fzf-preview \
+  '[[ -f $realpath ]] && bat --color=always $realpath || ls --color $realpath 2>/dev/null'
+
+zstyle ':completion:*:*:*:users' ignored-patterns \
+  adm amanda apache at avahi avahi-autoipd beaglidx bin cacti canna \
+  clamav daemon dbus distcache dnsmasq dovecot fax ftp games gdm \
+  gkrellmd gopher hacluster haldaemon halt hsqldb ident junkbust kdm \
+  ldap lp mail mailman mailnull man messagebus mldonkey mysql nagios \
+  named netdump news nfsnobody nobody nscd ntp nut nx obsrun openvpn \
+  operator pcap polkitd postfix postgres privoxy pulse pvm quagga radvd \
+  rpc rpcuser rpm rtkit scard shutdown squid sshd statd svn sync tftp \
+  usbmux uucp vcsa wwwrun xfs '_*'
 
 
 # ============================================================
@@ -71,61 +152,11 @@ HISTSIZE=50000
 SAVEHIST=50000
 HISTFILE=~/.zsh_history
 
-setopt HIST_IGNORE_ALL_DUPS   # No duplicate entries
+setopt HIST_IGNORE_ALL_DUPS    # No duplicate entries
 setopt HIST_IGNORE_SPACE      # Lines starting with space are not saved
 setopt HIST_VERIFY            # Show expanded history before running it
 setopt SHARE_HISTORY          # Share history across sessions (implies INC_APPEND)
 setopt EXTENDED_HISTORY       # Save timestamp + duration
-
-
-# ============================================================
-# COMPLETION SYSTEM
-# ============================================================
-autoload -Uz compinit
-compinit
-zinit cdreplay -q   # replay compdef calls cached during plugin load
-
-# Case-insensitive, partial-word, substring completion
-zstyle ':completion:*' matcher-list \
-  '' \
-  'm:{a-z}={A-Z}' \
-  'm:{a-zA-Z}={A-Za-z}' \
-  'r:|[._-]=* r:|=* l:|=*'
-
-# Grouping and descriptions
-zstyle ':completion:*' group-name ''
-zstyle ':completion:*' format '%F{yellow}── %d ──%f'
-zstyle ':completion:*' verbose true
-
-# Menu with colors
-zstyle ':completion:*' menu select
-zstyle ':completion:*:default' list-colors ${(s.:.)LS_COLORS}
-zstyle ':completion:*' list-colors ''
-
-# Approximate corrections (up to 2 errors tolerated)
-zstyle ':completion:*' completer _expand _complete _correct _approximate
-zstyle ':completion:*:approximate:*' max-errors 2 numeric
-
-# Kill: show processes with colors
-zstyle ':completion:*:*:kill:*:processes' \
-  list-colors '=(#b) #([0-9]#)*=0=01;31'
-zstyle ':completion:*:kill:*' command 'ps -u $USER -o pid,%cpu,tty,cputime,cmd'
-
-# fzf-tab: use fzf for tab completion previews
-zstyle ':fzf-tab:complete:cd:*' fzf-preview 'ls --color $realpath'
-zstyle ':fzf-tab:complete:*' fzf-preview \
-  '[[ -f $realpath ]] && bat --color=always $realpath || ls --color $realpath 2>/dev/null'
-
-# Don't complete uninteresting users
-zstyle ':completion:*:*:*:users' ignored-patterns \
-  adm amanda apache at avahi avahi-autoipd beaglidx bin cacti canna \
-  clamav daemon dbus distcache dnsmasq dovecot fax ftp games gdm \
-  gkrellmd gopher hacluster haldaemon halt hsqldb ident junkbust kdm \
-  ldap lp mail mailman mailnull man messagebus mldonkey mysql nagios \
-  named netdump news nfsnobody nobody nscd ntp nut nx obsrun openvpn \
-  operator pcap polkitd postfix postgres privoxy pulse pvm quagga radvd \
-  rpc rpcuser rpm rtkit scard shutdown squid sshd statd svn sync tftp \
-  usbmux uucp vcsa wwwrun xfs '_*'
 
 
 # ============================================================
@@ -209,7 +240,7 @@ if command -v eza &>/dev/null; then
   alias lt="eza -lAaph --sort=time --icons=always --group-directories-first"
   alias lS="eza -lAaph --sort=size --icons=always --group-directories-first"
   alias tree="eza --tree -A --icons=always"
-else
+elif command -v gls &>/dev/null; then
   alias ls="gls -Apx --group-directories-first --color=auto"
   alias ll="gls -lAaph --group-directories-first --color=auto"
   alias lt="gls -lAaph --sort=time --color=auto"
@@ -220,9 +251,8 @@ alias ..="cd .."
 alias ...="cd ../.."
 alias ....="cd ../../.."
 
-alias grep="rg"
+# REMOVED: alias grep="rg" (breaks scripts/subshells expecting POSIX grep options)
 alias diff="diff --color=auto"
-alias ip="ip --color=auto"
 alias du="du -h"
 alias df="df -h"
 alias free="vm_stat"
@@ -251,7 +281,7 @@ alias t="tmux"
 
 alias path='echo $PATH | tr ":" "\n"'
 alias serve="python3 -m http.server 8080"
-alias duh="du -h --max-depth=1 | sort -h"
+alias duh="du -h -d 1 | sort -h"
 alias ports="lsof -iTCP -sTCP:LISTEN -P -n"
 alias copy-last='fc -ln -1 | pbcopy 2>/dev/null || fc -ln -1 | xclip -sel clip'
 
@@ -305,7 +335,7 @@ function fe() {
 # Fuzzy kill a process
 function fkill() {
   local pid
-  pid=$(ps -u $USER -o pid,cmd | tail -n +2 | fzf | awk '{print $1}')
+  pid=$(ps -u $USER -o pid,command | tail -n +2 | fzf | awk '{print $1}')
   [ -n "$pid" ] && kill -${1:-9} "$pid"
 }
 
@@ -370,7 +400,6 @@ fi
 
 # ============================================================
 # TMUX — auto-attach or create session named 'main'
-# (moved above fastfetch so it only runs once, inside tmux)
 # ============================================================
 [ -z "$TMUX" ] && exec tmux new-session -A -s main
 
