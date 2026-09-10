@@ -347,7 +347,7 @@ require("lazy").setup({
 		event = "VeryLazy",
 		opts = {
 			options = {
-				theme = "catppuccin", -- pixel-pontosan ugyanaz a paletta, mint a colorscheme
+				-- theme = "catppuccin", -- pixel-pontosan ugyanaz a paletta, mint a colorscheme
 				component_separators = "",
 				section_separators = { left = "", right = "" },
 				globalstatus = true, -- illeszkedik a settings.lua laststatus=3 fixhez
