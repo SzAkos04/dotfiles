@@ -14,6 +14,52 @@ if [ ! -d "$ZINIT_HOME" ]; then
 fi
 source "${ZINIT_HOME}/zinit.zsh"
 
+
+# ============================================================
+# zsh-auto-notify — config + macOS override (terminal-notifier)
+# Defined BEFORE the zinit line below so it's in scope no matter when
+# atload actually fires (sync or turbo-deferred load).
+# ============================================================
+AUTO_NOTIFY_THRESHOLD=10
+AUTO_NOTIFY_TITLE="%command"
+AUTO_NOTIFY_BODY="exit %exit_code · %elapsed s"
+# AUTO_NOTIFY_EXPIRE_TIME / AUTO_NOTIFY_ICON_* removed on purpose: those are
+# notify-send (Linux) only, the plugin silently no-ops them on Darwin.
+
+function _auto_notify_use_terminal_notifier() {
+	# Runs exactly once, right when the plugin finishes loading (via atload
+	# below) — so this always wins the race against the plugin's own
+	# definition, no matter the load order.
+	if [[ "$(uname)" != "Darwin" ]] || ! command -v terminal-notifier &>/dev/null; then
+		return
+	fi
+
+	function _auto_notify_message() {
+		local command="$1" elapsed="$2" exit_code="$3"
+
+		if [[ "$exit_code" -eq 130 && "${AUTO_NOTIFY_CANCEL_ON_SIGINT}" -eq 1 ]]; then
+			return
+		fi
+
+		local title body
+		title="$(_auto_notify_format "${AUTO_NOTIFY_TITLE}" "$command" "$elapsed" "$exit_code")"
+		body="$(_auto_notify_format "${AUTO_NOTIFY_BODY}" "$command" "$elapsed" "$exit_code")"
+
+		local sound="Glass"
+		[[ "$exit_code" -ne 0 ]] && sound="Basso"
+
+		# Fixed -group id: a new notification replaces the previous one
+		# in Notification Center instead of stacking up.
+		terminal-notifier \
+			-title "$title" \
+			-message "$body" \
+			-sound "$sound" \
+			-group "zsh-auto-notify" \
+			>/dev/null
+	}
+}
+
+
 # ============================================================
 # PLUGINS (via TPM — Tmux Plugin Manager, illetve zinit turbo-mode-dal)
 # ============================================================
@@ -40,105 +86,14 @@ zinit snippet OMZP::git
 # Colored man pages
 zinit snippet OMZP::colored-man-pages
 
-zinit ice wait lucid
+# atload fut le UTOLJÁRA a plugin sourcing-ja után — akár azonnal
+# (ha turbo helyett sima load lenne), akár a deferred load végén.
+zinit ice wait lucid atload'_auto_notify_use_terminal_notifier'
 zinit light MichaelAquilina/zsh-auto-notify
 
 # Syntax highlighting — MINDIG utoljára töltsön be, minden widgetet be kell csomagolnia
 zinit ice wait lucid atinit'zicompinit; zicdreplay'
 zinit light zsh-users/zsh-syntax-highlighting
-
-
-# ============================================================
-# AUTO NOTIFY CONFIGURATION
-# ============================================================
-AUTO_NOTIFY_THRESHOLD=10
-AUTO_NOTIFY_TITLE="Terminal Task Complete"
-AUTO_NOTIFY_BODY="Command: %command\nTime taken: %elapsed"
-AUTO_NOTIFY_EXPIRE_TIME=5000
-
-# Override auto-notify function to use native macOS osascript
-function auto_notify_send() {
-  # $1 = text message, $2 = title
-  local text="${1//\\n/$'\n'}"
-  
-  osascript -e "display notification \"$text\" with title \"${2:-Terminal}\" sound name \"Glass\""
-}
-
-
-# ============================================================
-# PROMPT — Starship
-# ============================================================
-if command -v starship &>/dev/null; then
-  eval "$(starship init zsh)"
-else
-  autoload -Uz promptinit
-  promptinit
-  prompt adam1
-fi
-
-
-# ============================================================
-# HISTORY
-# ============================================================
-HISTSIZE=50000
-SAVEHIST=50000
-HISTFILE=~/.zsh_history
-
-setopt HIST_IGNORE_ALL_DUPS
-setopt HIST_IGNORE_SPACE
-setopt HIST_VERIFY
-setopt SHARE_HISTORY
-setopt EXTENDED_HISTORY
-
-
-# ============================================================
-# COMPLETION SYSTEM (CHANGED: cache-elt compinit — csak naponta 1x
-# fut a teljes fájl-átvizsgálás, egyébként -C flag-gel gyors induláshoz)
-# ============================================================
-autoload -Uz compinit
-if [[ -n ${ZDOTDIR:-$HOME}/.zcompdump(#qN.mh+24) ]]; then
-  compinit
-else
-  compinit -C
-fi
-# Megjegyzés: a zsh-syntax-highlighting fenti "ice" blokkja saját maga
-# hívja a zicompinit/zicdreplay-t turbo módban, ez a hívás a nem-turbo
-# ágra vonatkozik / biztonsági háló, ha valamiért a zinit ice nem futna le.
-
-zstyle ':completion:*' matcher-list \
-  '' \
-  'm:{a-z}={A-Z}' \
-  'm:{a-zA-Z}={A-Za-z}' \
-  'r:|[._-]=* r:|=* l:|=*'
-
-zstyle ':completion:*' group-name ''
-zstyle ':completion:*' format $'\e[1;33m── %d ──\e[0m'
-zstyle ':completion:*' verbose true
-
-zstyle ':completion:*' menu select
-zstyle ':completion:*:default' list-colors ${(s.:.)LS_COLORS}
-zstyle ':completion:*' list-colors ''
-
-zstyle ':completion:*' completer _expand _complete _correct _approximate
-zstyle ':completion:*:approximate:*' max-errors 2 numeric
-
-zstyle ':completion:*:*:kill:*:processes' \
-  list-colors '=(#b) #([0-9]#)*=0=01;31'
-zstyle ':completion:*:kill:*' command 'ps -u $USER -o pid,%cpu,tty,cputime,cmd'
-
-zstyle ':fzf-tab:complete:cd:*' fzf-preview 'ls --color $realpath'
-zstyle ':fzf-tab:complete:*' fzf-preview \
-  '[[ -f $realpath ]] && bat --color=always $realpath || ls --color $realpath 2>/dev/null'
-
-zstyle ':completion:*:*:*:users' ignored-patterns \
-  adm amanda apache at avahi avahi-autoipd beaglidx bin cacti canna \
-  clamav daemon dbus distcache dnsmasq dovecot fax ftp games gdm \
-  gkrellmd gopher hacluster haldaemon halt hsqldb ident junkbust kdm \
-  ldap lp mail mailman mailnull man messagebus mldonkey mysql nagios \
-  named netdump news nfsnobody nobody nscd ntp nut nx obsrun openvpn \
-  operator pcap polkitd postfix postgres privoxy pulse pvm quagga radvd \
-  rpc rpcuser rpm rtkit scard shutdown squid sshd statd svn sync tftp \
-  usbmux uucp vcsa wwwrun xfs '_*'
 
 
 # ============================================================
@@ -162,11 +117,68 @@ HISTSIZE=50000
 SAVEHIST=50000
 HISTFILE=~/.zsh_history
 
-setopt HIST_IGNORE_ALL_DUPS    # No duplicate entries
+setopt HIST_IGNORE_ALL_DUPS   # No duplicate entries
 setopt HIST_IGNORE_SPACE      # Lines starting with space are not saved
 setopt HIST_VERIFY            # Show expanded history before running it
 setopt SHARE_HISTORY          # Share history across sessions (implies INC_APPEND)
 setopt EXTENDED_HISTORY       # Save timestamp + duration
+
+
+# ============================================================
+# COMPLETION SYSTEM (cache-elt compinit — csak naponta 1x fut a teljes
+# fájl-átvizsgálás, egyébként -C flag-gel gyors induláshoz)
+# ============================================================
+autoload -Uz compinit
+if [[ -n ${ZDOTDIR:-$HOME}/.zcompdump(#qN.mh+24) ]]; then
+  compinit
+else
+  compinit -C
+fi
+# Megjegyzés: a zsh-syntax-highlighting fenti "ice" blokkja saját maga
+# hívja a zicompinit/zicdreplay-t turbo módban, ez a hívás a nem-turbo
+# ágra vonatkozik / biztonsági háló, ha valamiért a zinit ice nem futna le.
+
+# Case-insensitive, partial-word, substring completion
+zstyle ':completion:*' matcher-list \
+  '' \
+  'm:{a-z}={A-Z}' \
+  'm:{a-zA-Z}={A-Za-z}' \
+  'r:|[._-]=* r:|=* l:|=*'
+
+# Grouping and descriptions
+zstyle ':completion:*' group-name ''
+zstyle ':completion:*' format $'\e[1;33m── %d ──\e[0m'
+zstyle ':completion:*' verbose true
+
+# Menu with colors
+zstyle ':completion:*' menu select
+zstyle ':completion:*:default' list-colors ${(s.:.)LS_COLORS}
+zstyle ':completion:*' list-colors ''
+
+# Approximate corrections (up to 2 errors tolerated)
+zstyle ':completion:*' completer _expand _complete _correct _approximate
+zstyle ':completion:*:approximate:*' max-errors 2 numeric
+
+# Kill: show processes with colors
+zstyle ':completion:*:*:kill:*:processes' \
+  list-colors '=(#b) #([0-9]#)*=0=01;31'
+zstyle ':completion:*:kill:*' command 'ps -u $USER -o pid,%cpu,tty,cputime,cmd'
+
+# fzf-tab: use fzf for tab completion previews
+zstyle ':fzf-tab:complete:cd:*' fzf-preview 'ls --color $realpath'
+zstyle ':fzf-tab:complete:*' fzf-preview \
+  '[[ -f $realpath ]] && bat --color=always $realpath || ls --color $realpath 2>/dev/null'
+
+# Don't complete uninteresting users
+zstyle ':completion:*:*:*:users' ignored-patterns \
+  adm amanda apache at avahi avahi-autoipd beaglidx bin cacti canna \
+  clamav daemon dbus distcache dnsmasq dovecot fax ftp games gdm \
+  gkrellmd gopher hacluster haldaemon halt hsqldb ident junkbust kdm \
+  ldap lp mail mailman mailnull man messagebus mldonkey mysql nagios \
+  named netdump news nfsnobody nobody nscd ntp nut nx obsrun openvpn \
+  operator pcap polkitd postfix postgres privoxy pulse pvm quagga radvd \
+  rpc rpcuser rpm rtkit scard shutdown squid sshd statd svn sync tftp \
+  usbmux uucp vcsa wwwrun xfs '_*'
 
 
 # ============================================================
@@ -268,7 +280,7 @@ alias df="df -h"
 alias free="vm_stat"
 alias mkdir="mkdir -pv"
 
-alias so="exec zsh"       # Reload shell (clean — replaces process)
+alias so="exec zsh"             # Reload shell (clean — replaces process)
 alias reload="source ~/.zshrc"  # Reload in-place (keeps current state)
 alias zshrc="${EDITOR} ~/.zshrc"
 
