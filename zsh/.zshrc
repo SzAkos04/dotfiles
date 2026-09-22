@@ -48,11 +48,21 @@ zinit ice wait lucid atinit'zicompinit; zicdreplay'
 zinit light zsh-users/zsh-syntax-highlighting
 
 
-# zsh-auto-notify config
+# ============================================================
+# AUTO NOTIFY CONFIGURATION
+# ============================================================
 AUTO_NOTIFY_THRESHOLD=10
-AUTO_NOTIFY_TITLE="Terminal"
-AUTO_NOTIFY_BODY="[%exit_code] %command (%elapsed)"
+AUTO_NOTIFY_TITLE="Terminal Task Complete"
+AUTO_NOTIFY_BODY="Command: %command\nTime taken: %elapsed"
 AUTO_NOTIFY_EXPIRE_TIME=5000
+
+# Override auto-notify function to use native macOS osascript
+function auto_notify_send() {
+  # $1 = text message, $2 = title
+  local text="${1//\\n/$'\n'}"
+  
+  osascript -e "display notification \"$text\" with title \"${2:-Terminal}\" sound name \"Glass\""
+}
 
 
 # ============================================================
